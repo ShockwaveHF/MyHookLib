@@ -231,8 +231,10 @@ namespace MyStaticHookLib
 
             public Importer Importer { get; }
 
+            // Token: 0x04000049 RID: 73
             public readonly Dictionary<IDnlibDef, IDnlibDef> Mep = new Dictionary<IDnlibDef, IDnlibDef>();
 
+            // Token: 0x0400004A RID: 74
             public readonly ModuleDef TargetModule;
 
             public override ITypeDefOrRef Map(ITypeDefOrRef typeDefOrRef)
@@ -249,12 +251,14 @@ namespace MyStaticHookLib
                 }
                 return null;
             }
-            
+
+            // Token: 0x06000143 RID: 323 RVA: 0x00017658 File Offset: 0x00015858
             public override IMethod Map(MethodDef methodDef)
             {
                 return this.Mep.ContainsKey(methodDef) ? (this.Mep[methodDef] as MethodDef) : null;
             }
-            
+
+            // Token: 0x06000144 RID: 324 RVA: 0x0001768C File Offset: 0x0001588C
             public override IField Map(FieldDef fieldDef)
             {
                 return this.Mep.ContainsKey(fieldDef) ? (this.Mep[fieldDef] as FieldDef) : null;

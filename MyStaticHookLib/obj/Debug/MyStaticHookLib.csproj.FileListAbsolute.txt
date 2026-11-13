@@ -1,0 +1,8 @@
+C:\Users\ShockwaveHF\source\repos\!!MySoftware\MyStaticHookLib\bin\MyStaticHookLib.dll.config
+C:\Users\ShockwaveHF\source\repos\!!MySoftware\MyStaticHookLib\bin\MyStaticHookLib.dll
+C:\Users\ShockwaveHF\source\repos\!!MySoftware\MyStaticHookLib\bin\MyStaticHookLib.pdb
+C:\Users\ShockwaveHF\source\repos\!!MySoftware\MyStaticHookLib\MyStaticHookLib\obj\Debug\MyStaticHookLib.csproj.AssemblyReference.cache
+C:\Users\ShockwaveHF\source\repos\!!MySoftware\MyStaticHookLib\MyStaticHookLib\obj\Debug\MyStaticHookLib.csproj.CoreCompileInputs.cache
+C:\Users\ShockwaveHF\source\repos\!!MySoftware\MyStaticHookLib\MyStaticHookLib\obj\Debug\MyStatic.DDE353A9.Up2Date
+C:\Users\ShockwaveHF\source\repos\!!MySoftware\MyStaticHookLib\MyStaticHookLib\obj\Debug\MyStaticHookLib.dll
+C:\Users\ShockwaveHF\source\repos\!!MySoftware\MyStaticHookLib\MyStaticHookLib\obj\Debug\MyStaticHookLib.pdb

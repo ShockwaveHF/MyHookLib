@@ -23,9 +23,15 @@ namespace MyStaticHookLib
         /// <param name="targetAssemblyPath">Путь к целевому .exe или .dll файлу.</param>
         public HookPatcher(string targetAssemblyPath)
         {
+            if (string.IsNullOrEmpty(targetAssemblyPath) || !File.Exists(targetAssemblyPath))
+            {
+                throw new FileNotFoundException("Target assembly not found: " + targetAssemblyPath, targetAssemblyPath);
+            }
+
             _targetModule = ModuleDefMD.Load(targetAssemblyPath);
             _injectedTypes = new Dictionary<TypeDef, TypeDef>();
         }
+
 
         /// <summary>
         /// Инициализирует патчер, загружая целевую сборку из массива байтов.
@@ -33,6 +39,11 @@ namespace MyStaticHookLib
         /// <param name="targetAssemblyBytes">Массив байтов целевой сборки.</param>
         public HookPatcher(byte[] targetAssemblyBytes)
         {
+            if (targetAssemblyBytes == null || targetAssemblyBytes.Length == 0)
+            {
+                throw new ArgumentException("Target assembly bytes cannot be null or empty.", "targetAssemblyBytes");
+            }
+
             _targetModule = ModuleDefMD.Load(targetAssemblyBytes);
             _injectedTypes = new Dictionary<TypeDef, TypeDef>();
         }
@@ -218,6 +229,7 @@ namespace MyStaticHookLib
             return null;
         }
 
+
         internal void SaveToDisk(string outputPath)
         {
             try
@@ -288,6 +300,27 @@ namespace MyStaticHookLib
 
         private void PatchMethod(MethodDef targetMethod, IMethod hookMethod, HookData data)
         {
+            int expectedArgs = targetMethod.Parameters.Count;
+            if (!targetMethod.IsStatic && !data.PassInstance)
+            {
+                expectedArgs -= 1;
+            }
+
+            int actualHookArgs = hookMethod.MethodSig.Params.Count;
+            if (data.Position == HookPosition.Postfix && data.ReturnAction == HookReturnAction.ReplaceReturn)
+            {
+                if (actualHookArgs != 1)
+                {
+                    throw new InvalidOperationException("Postfix ReplaceReturn hook must have exactly 1 parameter: " + hookMethod.FullName);
+                }
+            }
+            else if (expectedArgs != actualHookArgs)
+            {
+                throw new InvalidOperationException(
+                    "Hook parameter count mismatch for " + targetMethod.FullName +
+                    ". Expected: " + expectedArgs + ", Actual: " + actualHookArgs);
+            }
+
             CilBody body = targetMethod.Body;
             body.SimplifyBranches();
 
@@ -303,6 +336,8 @@ namespace MyStaticHookLib
             body.OptimizeBranches();
         }
 
+
+
         private void ApplyPrefix(MethodDef targetMethod, IMethod hookMethod, HookData data)
         {
             CilBody body = targetMethod.Body;
@@ -311,7 +346,13 @@ namespace MyStaticHookLib
 
             prefixInstructions.Add(Instruction.Create(OpCodes.Call, hookMethod));
 
-            if (data.ReturnAction == HookReturnAction.CancelIfTrue)
+            bool hookHasReturn = hookMethod.MethodSig.RetType.FullName != "System.Void";
+
+            if (data.ReturnAction == HookReturnAction.ReplaceReturn)
+            {
+                prefixInstructions.Add(Instruction.Create(OpCodes.Ret));
+            }
+            else if (data.ReturnAction == HookReturnAction.CancelIfTrue)
             {
                 prefixInstructions.Add(Instruction.Create(OpCodes.Brfalse_S, firstOriginal));
                 if (targetMethod.ReturnType.FullName != "System.Void")
@@ -324,12 +365,18 @@ namespace MyStaticHookLib
                 }
                 prefixInstructions.Add(Instruction.Create(OpCodes.Ret));
             }
+            else if (hookHasReturn)
+            {
+                prefixInstructions.Add(Instruction.Create(OpCodes.Pop));
+            }
 
             for (int i = prefixInstructions.Count - 1; i >= 0; i--)
             {
                 body.Instructions.Insert(0, prefixInstructions[i]);
             }
         }
+
+
 
         private void ApplyPostfix(MethodDef targetMethod, IMethod hookMethod, HookData data)
         {
@@ -344,39 +391,67 @@ namespace MyStaticHookLib
                 }
             }
 
+            bool targetHasReturn = targetMethod.ReturnType.FullName != "System.Void";
+            bool hookHasReturn = hookMethod.MethodSig.RetType.FullName != "System.Void";
+
             foreach (Instruction retInstr in retInstructions)
             {
                 int index = body.Instructions.IndexOf(retInstr);
                 List<Instruction> postfixInstructions = new List<Instruction>();
-
-                bool hasReturnValue = targetMethod.ReturnType.FullName != "System.Void";
                 Local returnLocal = null;
 
-                if (hasReturnValue && data.ReturnAction != HookReturnAction.ReplaceReturn)
+                if (targetHasReturn && data.ReturnAction != HookReturnAction.ReplaceReturn)
                 {
                     returnLocal = new Local(targetMethod.ReturnType);
                     body.Variables.Add(returnLocal);
                     postfixInstructions.Add(Instruction.Create(OpCodes.Stloc_S, returnLocal));
                 }
 
-                List<Instruction> argLoads = BuildArgumentLoadInstructions(targetMethod, data.PassInstance, hasReturnValue && data.ReturnAction == HookReturnAction.ReplaceReturn);
-                postfixInstructions.AddRange(argLoads);
+                if (data.ReturnAction != HookReturnAction.ReplaceReturn)
+                {
+                    List<Instruction> argLoads = BuildArgumentLoadInstructions(targetMethod, data.PassInstance, false);
+                    postfixInstructions.AddRange(argLoads);
+                }
+
                 postfixInstructions.Add(Instruction.Create(OpCodes.Call, hookMethod));
 
-                if (hasReturnValue && data.ReturnAction != HookReturnAction.ReplaceReturn)
+                if (hookHasReturn && data.ReturnAction != HookReturnAction.ReplaceReturn)
+                {
+                    postfixInstructions.Add(Instruction.Create(OpCodes.Pop));
+                }
+
+                if (targetHasReturn && data.ReturnAction != HookReturnAction.ReplaceReturn)
                 {
                     postfixInstructions.Add(Instruction.Create(OpCodes.Ldloc_S, returnLocal));
+                }
+
+                Instruction firstPostfixInstr = postfixInstructions[0];
+
+                foreach (Instruction instr in body.Instructions)
+                {
+                    if (instr.Operand == retInstr)
+                    {
+                        instr.Operand = firstPostfixInstr;
+                    }
+                    else if (instr.Operand is Instruction[] targets)
+                    {
+                        for (int j = 0; j < targets.Length; j++)
+                        {
+                            if (targets[j] == retInstr)
+                            {
+                                targets[j] = firstPostfixInstr;
+                            }
+                        }
+                    }
                 }
 
                 for (int i = 0; i < postfixInstructions.Count; i++)
                 {
                     body.Instructions.Insert(index + i, postfixInstructions[i]);
                 }
-
-                retInstr.OpCode = OpCodes.Nop;
-                body.Instructions.Insert(index + postfixInstructions.Count + 1, Instruction.Create(OpCodes.Ret));
             }
         }
+
 
         private List<Instruction> BuildArgumentLoadInstructions(MethodDef targetMethod, bool passInstance, bool returnValueOnStack)
         {
